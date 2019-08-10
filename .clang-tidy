@@ -1,0 +1,28 @@
+---
+Checks: "-*,\
+misc-*,\
+modernize-*,\
+-modernize-deprecated-headers,\
+-modernize-pass-by-value,\
+-modernize-raw-string-literal,\
+-modernize-return-braced-init-list,\
+-modernize-use-auto,\
+-modernize-use-default-member-init,\
+-modernize-use-emplace,\
+-modernize-use-equals-default,\
+-modernize-use-equals-delete,\
+-modernize-use-noexcept,\
+-modernize-use-transparent-functors,\
+-modernize-use-using,\
+performance-*,\
+readability-*,\
+cppcoreguidelines-*,\
+-cppcoreguidelines-avoid-goto,\
+-cppcoreguidelines-owning-memory,\
+-cppcoreguidelines-pro-bounds-array-to-pointer-decay,\
+-cppcoreguidelines-pro-bounds-pointer-arithmetic,\
+-cppcoreguidelines-pro-type-vararg,\
+-cppcoreguidelines-special-member-functions,\
+"
+HeaderFilterRegex: '*\.(h|hxx|cxx|cpp)$'
+...
