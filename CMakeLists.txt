@@ -17,7 +17,7 @@ endif ()
 
 # Joins arguments and places the results in ${result_var}.
 function(join result_var)
-  set(result )
+  set(result)
   foreach (arg ${ARGN})
     set(result "${result}${arg}")
   endforeach ()
@@ -29,18 +29,18 @@ endfunction()
 # CMAKE_BUILD_TYPE itself (it does so for nmake).
 if (MASTER_PROJECT AND NOT CMAKE_BUILD_TYPE)
   join(doc "Choose the type of build, options are: None(CMAKE_CXX_FLAGS or "
-           "CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel.")
+    "CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel.")
   set(CMAKE_BUILD_TYPE Release CACHE STRING ${doc})
 endif ()
 
 option(FMT_PEDANTIC "Enable extra warnings and expensive tests." OFF)
 option(FMT_WERROR "Halt the compilation with an error on compiler warnings."
-       OFF)
+  OFF)
 
 # Options that control generation of various targets.
-option(FMT_DOC "Generate the doc target." ${MASTER_PROJECT})
+# option(FMT_DOC "Generate the doc target." ${MASTER_PROJECT})
 option(FMT_INSTALL "Generate the install target." ${MASTER_PROJECT})
-option(FMT_TEST "Generate the test target." ${MASTER_PROJECT})
+# option(FMT_TEST "Generate the test target." ${MASTER_PROJECT})
 option(FMT_FUZZ "Generate the fuzz target." OFF)
 option(FMT_CUDA_TEST "Generate the cuda-test target." OFF)
 
@@ -56,7 +56,7 @@ math(EXPR CPACK_PACKAGE_VERSION_MAJOR ${CMAKE_MATCH_1})
 math(EXPR CPACK_PACKAGE_VERSION_MINOR ${CMAKE_MATCH_2})
 math(EXPR CPACK_PACKAGE_VERSION_PATCH ${CMAKE_MATCH_3})
 join(FMT_VERSION ${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.
-                 ${CPACK_PACKAGE_VERSION_PATCH})
+  ${CPACK_PACKAGE_VERSION_PATCH})
 message(STATUS "Version: ${FMT_VERSION}")
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
@@ -83,7 +83,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
       -Wno-ctor-dtor-privacy -Wno-format-nonliteral -Wno-shadow)
   if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.6)
       set(PEDANTIC_COMPILE_FLAGS ${PEDANTIC_COMPILE_FLAGS} -Wnoexcept
-         -Wno-dangling-else -Wno-unused-local-typedefs)
+          -Wno-dangling-else -Wno-unused-local-typedefs)
   endif ()
   if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0)
       set(PEDANTIC_COMPILE_FLAGS ${PEDANTIC_COMPILE_FLAGS} -Wdouble-promotion
@@ -242,7 +242,7 @@ if (FMT_INSTALL)
   # Use a namespace because CMake provides better diagnostics for namespaced
   # imported targets.
   export(TARGETS ${INSTALL_TARGETS} NAMESPACE fmt::
-         FILE ${PROJECT_BINARY_DIR}/${targets_export_name}.cmake)
+      FILE ${PROJECT_BINARY_DIR}/${targets_export_name}.cmake)
 
   # Install version, config and target files.
   install(
@@ -281,7 +281,7 @@ set(gitignore ${PROJECT_SOURCE_DIR}/.gitignore)
 if (MASTER_PROJECT AND EXISTS ${gitignore})
   # Get the list of ignored files from .gitignore.
   file (STRINGS ${gitignore} lines)
-  LIST(REMOVE_ITEM lines /doc/html)
+  list(REMOVE_ITEM lines /doc/html)
   foreach (line ${lines})
     string(REPLACE "." "[.]" line "${line}")
     string(REPLACE "*" ".*" line "${line}")
