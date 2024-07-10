@@ -37,10 +37,10 @@ if (FMT_MODULE)
   # add_compile_options(-stdlib=libc++)
   # add_link_options(-stdlib=libc++)
   # MYBE: generate new BMI with other comiler settings
-  # XXX add_fmt_module(fmt-module)
+  add_fmt_module(fmt-module)
 
   add_executable(module-test main.cc)
-  target_link_libraries(module-test fmt::fmt)
+  target_link_libraries(module-test fmt-module)
   target_compile_definitions(module-test PUBLIC FMT_MODULE)
   target_compile_options(module-test PRIVATE ${PEDANTIC_COMPILE_FLAGS})
 endif ()
