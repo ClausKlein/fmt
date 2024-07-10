@@ -6,7 +6,7 @@ set(TEST_MAIN_SRC test-main.cc gtest-extra.cc gtest-extra.h util.cc)
 add_library(test-main STATIC ${TEST_MAIN_SRC})
 target_include_directories(test-main PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
-target_link_libraries(test-main gtest fmt)
+target_link_libraries(test-main PUBLIC gtest fmt::fmt)
 
 function(add_fmt_executable name)
   add_executable(${name} ${ARGN})
@@ -31,16 +31,18 @@ function(add_fmt_test name)
 
   set(sources ${name}.cc ${ADD_FMT_TEST_UNPARSED_ARGUMENTS})
   if (ADD_FMT_TEST_HEADER_ONLY)
+    message(STATUS "ADD_FMT_TEST_HEADER_ONLY: ${ADD_FMT_TEST_HEADER_ONLY}")
     set(sources ${sources} ${TEST_MAIN_SRC} ../src/os.cc)
     set(libs gtest fmt-header-only)
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       set(PEDANTIC_COMPILE_FLAGS ${PEDANTIC_COMPILE_FLAGS} -Wno-weak-vtables)
     endif ()
   elseif (ADD_FMT_TEST_MODULE)
+    message(STATUS "ADD_FMT_TEST_MODULE: ${ADD_FMT_TEST_MODULE}")
     set(libs test-main test-module)
     set_source_files_properties(${name}.cc PROPERTIES OBJECT_DEPENDS test-module)
   else ()
-    set(libs test-main fmt)
+    set(libs test-main)
   endif ()
   add_fmt_executable(${name} ${sources})
   target_link_libraries(${name} ${libs})
@@ -60,106 +62,114 @@ function(add_fmt_test name)
 endfunction()
 
 if (FMT_MODULE)
-  return ()
-endif ()
+  message(STATUS "FMT_MODULE: ${FMT_MODULE}")
+else ()
 
-add_fmt_test(args-test)
-add_fmt_test(base-test)
-add_fmt_test(assert-test)
-add_fmt_test(chrono-test)
-add_fmt_test(color-test)
-add_fmt_test(gtest-extra-test)
-add_fmt_test(format-test mock-allocator.h)
-if (MSVC)
-  target_compile_options(format-test PRIVATE /bigobj)
-endif ()
-if (NOT (MSVC AND BUILD_SHARED_LIBS))
-  add_fmt_test(format-impl-test HEADER_ONLY header-only-test.cc)
-endif ()
-add_fmt_test(ostream-test)
-add_fmt_test(compile-test)
-add_fmt_test(compile-fp-test HEADER_ONLY)
-if (MSVC)
-  # Without this option, MSVC returns 199711L for the __cplusplus macro.
-  target_compile_options(compile-fp-test PRIVATE /Zc:__cplusplus)
-endif()
-add_fmt_test(printf-test)
-add_fmt_test(ranges-test ranges-odr-test.cc)
+  add_fmt_test(args-test)
+  add_fmt_test(base-test)
+  add_fmt_test(assert-test)
+  add_fmt_test(chrono-test)
+  add_fmt_test(color-test)
+  add_fmt_test(gtest-extra-test)
+  add_fmt_test(format-test mock-allocator.h)
+  if (MSVC)
+    target_compile_options(format-test PRIVATE /bigobj)
+  endif ()
+  if (NOT (MSVC AND BUILD_SHARED_LIBS))
+    add_fmt_test(format-impl-test HEADER_ONLY header-only-test.cc)
+  endif ()
+  add_fmt_test(ostream-test)
+  add_fmt_test(compile-test)
+  add_fmt_test(compile-fp-test HEADER_ONLY)
+  if (MSVC)
+    # Without this option, MSVC returns 199711L for the __cplusplus macro.
+    target_compile_options(compile-fp-test PRIVATE /Zc:__cplusplus)
+  endif()
+  add_fmt_test(printf-test)
+  add_fmt_test(ranges-test ranges-odr-test.cc)
 
-add_fmt_test(scan-test HEADER_ONLY)
-check_symbol_exists(strptime "time.h" HAVE_STRPTIME)
-if (HAVE_STRPTIME)
-  target_compile_definitions(scan-test PRIVATE FMT_HAVE_STRPTIME)
-endif ()
+  add_fmt_test(scan-test HEADER_ONLY)
+  check_symbol_exists(strptime "time.h" HAVE_STRPTIME)
+  if (HAVE_STRPTIME)
+    target_compile_definitions(scan-test PRIVATE FMT_HAVE_STRPTIME)
+  endif ()
 
-add_fmt_test(std-test)
-try_compile(compile_result_unused
-            ${CMAKE_CURRENT_BINARY_DIR}
-            SOURCES ${CMAKE_CURRENT_LIST_DIR}/detect-stdfs.cc
-            OUTPUT_VARIABLE RAWOUTPUT)
-string(REGEX REPLACE ".*libfound \"([^\"]*)\".*" "\\1" STDLIBFS "${RAWOUTPUT}")
-if (STDLIBFS)
-  target_link_libraries(std-test ${STDLIBFS})
-endif ()
-add_fmt_test(unicode-test HEADER_ONLY)
-if (MSVC)
-  target_compile_options(unicode-test PRIVATE /utf-8)
-endif ()
-add_fmt_test(xchar-test)
-add_fmt_test(enforce-checks-test)
-target_compile_definitions(enforce-checks-test PRIVATE
+  add_fmt_test(std-test)
+  try_compile(compile_result_unused
+              ${CMAKE_CURRENT_BINARY_DIR}
+              SOURCES ${CMAKE_CURRENT_LIST_DIR}/detect-stdfs.cc
+              OUTPUT_VARIABLE RAWOUTPUT)
+  string(REGEX REPLACE ".*libfound \"([^\"]*)\".*" "\\1" STDLIBFS "${RAWOUTPUT}")
+  if (STDLIBFS)
+    target_link_libraries(std-test ${STDLIBFS})
+  endif ()
+  add_fmt_test(unicode-test HEADER_ONLY)
+  if (MSVC)
+    target_compile_options(unicode-test PRIVATE /utf-8)
+  endif ()
+  add_fmt_test(xchar-test)
+  add_fmt_test(enforce-checks-test)
+  target_compile_definitions(enforce-checks-test PRIVATE
                            -DFMT_ENFORCE_COMPILE_STRING)
+endif ()
 
 if (FMT_MODULE)
   # The tests need {fmt} to be compiled as traditional library
   # because of visibility of implementation details.
   # If module support is present the module tests require a
   # test-only module to be built from {fmt}
-  add_library(test-module OBJECT ${CMAKE_SOURCE_DIR}/src/fmt.cc)
-  target_compile_features(test-module PUBLIC cxx_std_11)
-  target_include_directories(test-module PUBLIC
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
-  enable_module(test-module)
 
-  add_fmt_test(module-test MODULE test-main.cc)
-  if (MSVC)
-    target_compile_options(test-module PRIVATE /utf-8 /Zc:__cplusplus
-                           /Zc:externConstexpr /Zc:inline)
-    target_compile_options(module-test PRIVATE /utf-8 /Zc:__cplusplus
-                           /Zc:externConstexpr /Zc:inline)
-  endif ()
-endif ()
+  # FIXME: CK HE?
+  # add_library(test-module OBJECT ${CMAKE_SOURCE_DIR}/src/fmt.cc)
+  # target_compile_features(test-module PUBLIC cxx_std_11)
+  # target_include_directories(test-module PUBLIC
+  #   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
+  # enable_module(test-module)
 
-if (NOT DEFINED MSVC_STATIC_RUNTIME AND MSVC)
-  foreach (flag_var
-			 CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-			 CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-	if (${flag_var} MATCHES "^(/|-)(MT|MTd)")
-	  set(MSVC_STATIC_RUNTIME ON)
-	  break()
-	endif()
-  endforeach()
-endif()
+  # add_fmt_test(module-test MODULE test-main.cc)
+  # if (MSVC)
+  #   target_compile_options(test-module PRIVATE /utf-8 /Zc:__cplusplus
+  #                          /Zc:externConstexpr /Zc:inline)
+  #   target_compile_options(module-test PRIVATE /utf-8 /Zc:__cplusplus
+  #                          /Zc:externConstexpr /Zc:inline)
+  # endif ()
 
-if (NOT MSVC_STATIC_RUNTIME)
-  add_fmt_executable(posix-mock-test
-    posix-mock-test.cc ../src/format.cc ${TEST_MAIN_SRC})
-  target_include_directories(
-    posix-mock-test PRIVATE ${PROJECT_SOURCE_DIR}/include)
-  target_link_libraries(posix-mock-test gtest)
-  if (FMT_PEDANTIC)
-    target_compile_options(posix-mock-test PRIVATE ${PEDANTIC_COMPILE_FLAGS})
+else ()
+
+  if (NOT DEFINED MSVC_STATIC_RUNTIME AND MSVC)
+    foreach (flag_var
+            CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+            CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+      if (${flag_var} MATCHES "^(/|-)(MT|MTd)")
+        set(MSVC_STATIC_RUNTIME ON)
+        break()
+      endif()
+    endforeach()
+  endif()
+
+  if (NOT MSVC_STATIC_RUNTIME)
+    add_fmt_executable(posix-mock-test
+      posix-mock-test.cc ../src/format.cc ${TEST_MAIN_SRC})
+    target_include_directories(
+      posix-mock-test PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(posix-mock-test gtest)
+    if (FMT_PEDANTIC)
+      target_compile_options(posix-mock-test PRIVATE ${PEDANTIC_COMPILE_FLAGS})
+    endif ()
+    if (MSVC)
+      target_compile_options(posix-mock-test PRIVATE /utf-8)
+    endif ()
+    add_test(NAME posix-mock-test COMMAND posix-mock-test)
+    add_fmt_test(os-test)
   endif ()
-  if (MSVC)
-    target_compile_options(posix-mock-test PRIVATE /utf-8)
-  endif ()
-  add_test(NAME posix-mock-test COMMAND posix-mock-test)
-  add_fmt_test(os-test)
+
 endif ()
 
 message(STATUS "FMT_PEDANTIC: ${FMT_PEDANTIC}")
 
-if (FMT_PEDANTIC)
+if (FMT_PEDANTIC AND NOT FMT_MODULE)
+  include(CheckCXXCompilerFlag)
+
   # Test that the library can be compiled with exceptions disabled.
   # -fno-exception is broken in icc: https://github.com/fmtlib/fmt/issues/822.
   if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
