@@ -1,3 +1,13 @@
+enable_language(C)
+add_executable(c-test c-test.c)
+target_link_libraries(c-test PRIVATE fmt::fmt-c)
+add_test(NAME c-test COMMAND c-test)
+
+if (FMT_MODULE)
+  message(WARNING "Testing is incompatible with build mode 'module'.")
+  return ()
+endif ()
+
 add_subdirectory(gtest)
 
 set(TEST_MAIN_SRC test-main.cc gtest-extra.cc gtest-extra.h util.cc)
@@ -40,10 +50,6 @@ function(add_fmt_test name)
   endif ()
   add_test(NAME ${name} COMMAND ${name})
 endfunction()
-
-if (FMT_MODULE)
-  return ()
-endif ()
 
 add_fmt_test(args-test)
 add_fmt_test(base-test)
@@ -112,9 +118,9 @@ if (NOT DEFINED MSVC_STATIC_RUNTIME AND MSVC)
 	if (${flag_var} MATCHES "^(/|-)(MT|MTd)")
 	  set(MSVC_STATIC_RUNTIME ON)
 	  break()
-	endif()
+	endif ()
   endforeach()
-endif()
+endif ()
 
 if (NOT MSVC_STATIC_RUNTIME)
   add_executable(posix-mock-test
@@ -242,8 +248,3 @@ if (FMT_CUDA_TEST)
     add_test(NAME cuda-test COMMAND fmt-in-cuda-test)
   endif ()
 endif ()
-
-enable_language(C)
-add_executable(c-test c-test.c)
-target_link_libraries(c-test PRIVATE fmt::fmt-c)
-add_test(NAME c-test COMMAND c-test)
