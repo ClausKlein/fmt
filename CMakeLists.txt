@@ -24,7 +24,7 @@ function (join result_var)
     set(result "${result}${arg}")
   endforeach ()
   set(${result_var} "${result}" PARENT_SCOPE)
-endfunction()
+endfunction ()
 
 # DEPRECATED! Should be merged into add_module_library.
 function(enable_module target)
@@ -39,7 +39,7 @@ function(enable_module target)
       set_source_files_properties(${BMI} PROPERTIES GENERATED ON)
     endif ()
   endif ()
-endfunction()
+endfunction ()
 
 set(FMT_USE_CMAKE_MODULES FALSE)
 if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.28 AND
@@ -170,7 +170,7 @@ if (FMT_MASTER_PROJECT AND NOT CMAKE_BUILD_TYPE)
     "CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel.")
 endif ()
 
-project(FMT CXX)
+project(FMT LANGUAGES C CXX)
 
 # Determine support for the C++ module scanning and CXX_MODULE File_Sets
 # Requires C++20, CMake >= 3.28 and
@@ -448,15 +448,19 @@ if (FMT_SAFE_DURATION_CAST)
   target_compile_definitions(fmt PUBLIC FMT_SAFE_DURATION_CAST)
 endif ()
 
-# Adds a library compiled with C++20 module support.
-#
-# Usage:
-#   add_module_library(<name> [sources...] [USE_CMAKE_MODULES TRUE])
-function (add_module_library name)
-  cmake_parse_arguments(AML "" "USE_CMAKE_MODULES" "" ${ARGN})
-  set(sources ${AML_UNPARSED_ARGUMENTS})
+if (NOT MSVC)
+  # Unicode is always supported on compilers other than MSVC.
+elseif (FMT_UNICODE)
+  # Unicode support requires compiling with /utf-8.
+  target_compile_options(fmt PUBLIC $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>)
+  target_compile_options(fmt-header-only INTERFACE $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>)
+else ()
+  target_compile_definitions(fmt PUBLIC FMT_UNICODE=0)
+endif ()
 
-if (FMT_USE_CMAKE_MODULES)
+add_library(fmt-header-only INTERFACE)
+
+if (FMT_MODULE)
   target_sources(
     fmt-header-only
     PUBLIC
@@ -477,25 +481,35 @@ if (FMT_USE_CMAKE_MODULES)
         include/fmt/format.h
         include/fmt/fmt-c.h
         include/fmt/std.h
-        include/fmt/base.h
-)
-endif ()
+        include/fmt/base.h)
 
-if (NOT MSVC)
-  # Unicode is always supported on compilers other than MSVC.
-elseif (FMT_UNICODE)
-  # Unicode support requires compiling with /utf-8.
-  target_compile_options(fmt PUBLIC $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>)
-  target_compile_options(fmt-header-only INTERFACE $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>)
-else ()
-  target_compile_definitions(fmt PUBLIC FMT_UNICODE=0)
-endif ()
+    message(STATUS "FMT_USE_MODULES=${FMT_USE_MODULES}")
+    add_library(fmt-module STATIC)
+    target_sources(
+        fmt-module
+        PUBLIC
+            FILE_SET fmt
+                TYPE CXX_MODULES
+                BASE_DIRS src
+                FILES src/fmt.cc
+    )
+    target_compile_features(fmt-module PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
+    if(FMT_IMPORT_STD)
+      message(STATUS "Set target property CXX_MODULE_STD=ON")
+      target_compile_definitions(fmt-module PUBLIC FMT_IMPORT_STD)
+      set_target_properties(fmt-module PROPERTIES CXX_MODULE_STD ON)
+    else ()
+      message(WARNING "CXX_MODULE_STD=OFF")
+    endif()
+    target_sources(fmt-module PRIVATE src/os.cc src/format.cc)
 
-add_library(fmt-header-only INTERFACE)
+    target_link_libraries(fmt-module PUBLIC fmt-header-only)
+    setup_target(fmt-module PUBLIC)
+endif ()
 
 target_compile_definitions(fmt-header-only INTERFACE FMT_HEADER_ONLY=1)
 target_compile_features(fmt-header-only INTERFACE cxx_std_11)
-# XXX setup_target(fmt-header-only INTERFACE)
+setup_target(fmt-header-only INTERFACE)
 set_target_properties(fmt-header-only PROPERTIES VERIFY_INTERFACE_HEADER_SETS ${PROJECT_IS_TOP_LEVEL})
 
 add_library(fmt-c src/fmt-c.cc)
@@ -566,9 +580,10 @@ if (FMT_INSTALL)
 
   set(INSTALL_TARGETS fmt fmt-header-only fmt-c)
 
-  set(INSTALL_FILE_SET)
-  if (FMT_USE_CMAKE_MODULES)
+  if (FMT_MODULE)
     set(INSTALL_FILE_SET FILE_SET fmt DESTINATION "${FMT_INC_DIR}/fmt" FILE_SET HEADERS)
+  else ()
+    set(INSTALL_FILE_SET)
   endif ()
 
   # Install the library and headers.
@@ -597,7 +612,8 @@ if (FMT_INSTALL)
     EXPORT ${targets_export_name}
     DESTINATION ${FMT_CMAKE_DIR}
     NAMESPACE fmt::
-    COMPONENT fmt_core)
+    COMPONENT fmt_core
+    CXX_MODULES_DIRECTORY .)
 
   install(
     FILES "${pkgconfig}"

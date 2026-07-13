@@ -3,11 +3,6 @@ add_executable(c-test c-test.c)
 target_link_libraries(c-test PRIVATE fmt::fmt-c)
 add_test(NAME c-test COMMAND c-test)
 
-if (FMT_MODULE)
-  message(WARNING "Testing is incompatible with build mode 'module'.")
-  return ()
-endif ()
-
 add_subdirectory(gtest)
 
 set(TEST_MAIN_SRC test-main.cc gtest-extra.cc gtest-extra.h util.cc)
