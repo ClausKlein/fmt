@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8...4.3)
+cmake_minimum_required(VERSION 3.8...4.4)
 include_guard(GLOBAL)
 
 # Fallback for using newer policies on CMake <3.12.
@@ -41,12 +41,6 @@ function(enable_module target)
     endif ()
   endif ()
 endfunction()
-
-set(FMT_USE_CMAKE_MODULES FALSE)
-if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.28 AND
-    CMAKE_GENERATOR STREQUAL "Ninja")
-  set(FMT_USE_CMAKE_MODULES TRUE)
-endif ()
 
 # Adds a library compiled with C++20 module support.
 # `enabled` is a CMake variables that specifies if modules are enabled.
@@ -154,6 +148,7 @@ if (FMT_MASTER_PROJECT AND NOT CMAKE_BUILD_TYPE)
 endif ()
 
 project(FMT CXX)
+
 # Determine Support for the C++ Module Scanning Features
 # Requires CMake>= 3.28 plus (Ninja >= 1.11 OR Visual Studio >=17.4)
 # The project() CMake Function sets several variables including those
