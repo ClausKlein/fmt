@@ -1,4 +1,4 @@
-Checks: modernize-use-trailing-return-type
+Checks: modernize-use-trailing-return-type, misc-header-include-cycle # , misc-include-cleaner, misc-const-correctness
 CheckOptions:
   - key: modernize-use-trailing-return-type.TransformLambdas
     value: none

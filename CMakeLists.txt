@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8...3.28)
+cmake_minimum_required(VERSION 3.8...4.4)
 include_guard(GLOBAL)
 
 # Fallback for using newer policies on CMake <3.12.
