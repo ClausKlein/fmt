@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8...3.28)
+cmake_minimum_required(VERSION 3.8...4.3)
 include_guard(GLOBAL)
 
 # Fallback for using newer policies on CMake <3.12.
@@ -28,6 +28,129 @@ function (join result_var)
       PARENT_SCOPE)
 endfunction ()
 
+# DEPRECATED! Should be merged into add_module_library.
+function (enable_module target)
+  if (MSVC)
+    if (NOT CMAKE_GENERATOR STREQUAL "Ninja")
+      set(BMI_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+      file(TO_NATIVE_PATH "${BMI_DIR}/${target}.ifc" BMI)
+      target_compile_options(
+        ${target}
+        PRIVATE /interface /ifcOutput ${BMI}
+        INTERFACE /reference fmt=${BMI})
+      set_target_properties(${target} PROPERTIES ADDITIONAL_CLEAN_FILES ${BMI})
+      set_source_files_properties(${BMI} PROPERTIES GENERATED ON)
+    endif ()
+  endif ()
+endfunction ()
+
+set(FMT_USE_CMAKE_MODULES FALSE)
+if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.28 AND CMAKE_GENERATOR STREQUAL
+                                                 "Ninja")
+  set(FMT_USE_CMAKE_MODULES TRUE)
+endif ()
+
+# Adds a library compiled with C++20 module support.
+# `enabled` is a CMake variables that specifies if modules are enabled.
+# If modules are disabled `add_module_library` falls back to creating a
+# non-modular library.
+#
+# Usage:
+#   add_module_library(<name> [sources...] FALLBACK [sources...] [IF enabled])
+function (add_module_library name)
+  cmake_parse_arguments(AML "" "IF" "FALLBACK" ${ARGN})
+  set(sources ${AML_UNPARSED_ARGUMENTS})
+
+  add_library(${name})
+  set_target_properties(${name} PROPERTIES LINKER_LANGUAGE CXX)
+
+  if (NOT ${${AML_IF}})
+    # Create a non-modular library.
+    target_sources(${name} PRIVATE ${AML_FALLBACK})
+    set_target_properties(${name} PROPERTIES CXX_SCAN_FOR_MODULES OFF)
+    message(WARNING "CXX_SCAN_FOR_MODULES: OFF")
+    return()
+  endif ()
+
+  # Modules require C++20.
+  target_compile_features(${name} PUBLIC cxx_std_20)
+  if (CMAKE_COMPILER_IS_GNUCXX OR MSVC)
+    # XXX target_compile_options(${name} PUBLIC -fmodules-ts)
+    if (CMAKE_VERSION VERSION_GREATER_EQUAL 4.3)
+      option(FMT_IMPORT_STD "Enable use of `import std;`" OFF)
+    endif ()
+  endif ()
+
+  if (FMT_USE_CMAKE_MODULES AND FMT_IMPORT_STD)
+    if (NOT DEFINED CMAKE_CXX_STANDARD)
+      set(CMAKE_CXX_STANDARD 23)
+    endif ()
+    # -------------------------------------------------------------------------
+    # Tell CMake that we explicitly want `import std`.
+    # This will set the property CXX_MODULE_STD on target {fmt} to 1
+    # -------------------------------------------------------------------------
+    message(
+      STATUS "CMAKE_CXX_COMPILER_IMPORT_STD=${CMAKE_CXX_COMPILER_IMPORT_STD}")
+    if (${CMAKE_CXX_STANDARD} IN_LIST CMAKE_CXX_COMPILER_IMPORT_STD)
+      message(STATUS "Use FMT_IMPORT_STD=${FMT_IMPORT_STD}")
+      set_target_properties(${name} PROPERTIES CXX_MODULE_STD ON)
+      message(STATUS "Set target property CXX_MODULE_STD=ON")
+    else ()
+      message(WARNING "CXX_MODULE_STD=OFF")
+    endif ()
+  endif ()
+
+  if (FMT_USE_CMAKE_MODULES)
+    target_sources(${name} PUBLIC FILE_SET fmt TYPE CXX_MODULES FILES
+                                  ${sources})
+  else ()
+    # `std` is affected by CMake options and may be higher than C++20.
+    get_target_property(std ${name} CXX_STANDARD)
+
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      set(pcms)
+      foreach (src ${sources})
+        get_filename_component(pcm ${src} NAME_WE)
+        set(pcm ${pcm}.pcm)
+
+        # Propagate -fmodule-file=*.pcm to targets that link with this library.
+        target_compile_options(
+          ${name} PUBLIC -fmodule-file=${CMAKE_CURRENT_BINARY_DIR}/${pcm})
+
+        # Use an absolute path to prevent target_link_libraries prepending -l
+        # to it.
+        set(pcms ${pcms} ${CMAKE_CURRENT_BINARY_DIR}/${pcm})
+        add_custom_command(
+          OUTPUT ${pcm}
+          COMMAND
+            ${CMAKE_CXX_COMPILER} -std=c++${std} -x c++-module --precompile -c
+            -o ${pcm} ${CMAKE_CURRENT_SOURCE_DIR}/${src}
+            "-I$<JOIN:$<TARGET_PROPERTY:${name},INCLUDE_DIRECTORIES>,;-I>"
+          # Required by the -I generator expression above.
+          COMMAND_EXPAND_LISTS
+          DEPENDS ${src})
+      endforeach ()
+
+      # Add .pcm files as sources to make sure they are built before the library.
+      set(sources)
+      foreach (pcm ${pcms})
+        get_filename_component(pcm_we ${pcm} NAME_WE)
+        set(obj ${pcm_we}.o)
+        # Use an absolute path to prevent target_link_libraries prepending -l.
+        set(sources ${sources} ${pcm} ${CMAKE_CURRENT_BINARY_DIR}/${obj})
+        add_custom_command(
+          OUTPUT ${obj}
+          COMMAND ${CMAKE_CXX_COMPILER}
+                  $<TARGET_PROPERTY:${name},COMPILE_OPTIONS> -c -o ${obj} ${pcm}
+          DEPENDS ${pcm})
+      endforeach ()
+    endif ()
+    target_sources(${name} PRIVATE ${sources})
+  endif ()
+endfunction ()
+
+include(CMakeParseArguments)
+
 # Sets a cache variable with a docstring joined from multiple arguments:
 #   set_verbose(<variable> <value> CACHE <type> <docstring>...)
 # This allows splitting a long docstring for readability.
@@ -48,7 +171,7 @@ if (FMT_MASTER_PROJECT AND NOT CMAKE_BUILD_TYPE)
     "CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel.")
 endif ()
 
-project(FMT CXX)
+project(FMT LANGUAGES C CXX)
 
 # Determine support for the C++ module scanning and CXX_MODULE File_Sets
 # Requires C++20, CMake >= 3.28 and
@@ -326,98 +449,76 @@ if (FMT_SAFE_DURATION_CAST)
   target_compile_definitions(fmt PUBLIC FMT_SAFE_DURATION_CAST)
 endif ()
 
-# Adds a library compiled with C++20 module support.
-#
-# Usage:
-#   add_module_library(<name> [sources...] [USE_CMAKE_MODULES TRUE])
-function (add_module_library name)
-  cmake_parse_arguments(AML "" "USE_CMAKE_MODULES" "" ${ARGN})
-  set(sources ${AML_UNPARSED_ARGUMENTS})
+add_library(fmt-header-only INTERFACE)
 
-  add_library(${name})
-  set_target_properties(${name} PROPERTIES LINKER_LANGUAGE CXX)
-
-  # Modules require C++20.
-  target_compile_features(${name} PUBLIC cxx_std_20)
-
-  if (MSVC)
-    if (NOT CMAKE_GENERATOR STREQUAL "Ninja")
-      set(BMI_DIR "${CMAKE_CURRENT_BINARY_DIR}")
-      file(TO_NATIVE_PATH "${BMI_DIR}/${name}.ifc" BMI)
-      target_compile_options(
-        ${name}
-        PRIVATE /interface /ifcOutput ${BMI}
-        INTERFACE /reference fmt=${BMI})
-      set_target_properties(${name} PROPERTIES ADDITIONAL_CLEAN_FILES ${BMI})
-      set_source_files_properties(${BMI} PROPERTIES GENERATED ON)
-    endif ()
-  endif ()
-
-  if (${AML_USE_CMAKE_MODULES})
-    target_sources(${name} PUBLIC FILE_SET fmt TYPE CXX_MODULES FILES
-                                  ${sources})
-    return()
-  endif ()
-
-  if (CMAKE_COMPILER_IS_GNUCXX)
-    target_compile_options(${name} PUBLIC -fmodules-ts)
-  endif ()
-
-  # `std` is affected by CMake options and may be higher than C++20.
-  get_target_property(std ${name} CXX_STANDARD)
-
-  if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(pcms)
-    foreach (src ${sources})
-      get_filename_component(pcm ${src} NAME_WE)
-      set(pcm ${pcm}.pcm)
-
-      # Propagate -fmodule-file=*.pcm to targets that link with this library.
-      target_compile_options(
-        ${name} PUBLIC -fmodule-file=${CMAKE_CURRENT_BINARY_DIR}/${pcm})
-
-      # Use an absolute path to prevent target_link_libraries prepending -l
-      # to it.
-      set(pcms ${pcms} ${CMAKE_CURRENT_BINARY_DIR}/${pcm})
-      add_custom_command(
-        OUTPUT ${pcm}
-        COMMAND
-          ${CMAKE_CXX_COMPILER} -std=c++${std} -x c++-module --precompile -c -o
-          ${pcm} ${CMAKE_CURRENT_SOURCE_DIR}/${src}
-          "-I$<JOIN:$<TARGET_PROPERTY:${name},INCLUDE_DIRECTORIES>,;-I>"
-        # Required by the -I generator expression above.
-        COMMAND_EXPAND_LISTS
-        DEPENDS ${src})
-    endforeach ()
-
-    # Add .pcm files as sources to make sure they are built before the library.
-    set(sources)
-    foreach (pcm ${pcms})
-      get_filename_component(pcm_we ${pcm} NAME_WE)
-      set(obj ${pcm_we}.o)
-      # Use an absolute path to prevent target_link_libraries prepending -l.
-      set(sources ${sources} ${pcm} ${CMAKE_CURRENT_BINARY_DIR}/${obj})
-      add_custom_command(
-        OUTPUT ${obj}
-        COMMAND ${CMAKE_CXX_COMPILER} $<TARGET_PROPERTY:${name},COMPILE_OPTIONS>
-                -c -o ${obj} ${pcm}
-        DEPENDS ${pcm})
-    endforeach ()
-  endif ()
-  target_sources(${name} PRIVATE ${sources})
-endfunction ()
-
-if (FMT_MODULE)
-  add_module_library(fmt-module src/fmt.cc USE_CMAKE_MODULES
-                     ${FMT_USE_CMAKE_MODULES})
-  setup_target(fmt-module PUBLIC)
+if (NOT MSVC)
+  # Unicode is always supported on compilers other than MSVC.
+elseif (FMT_UNICODE)
+  # Unicode support requires compiling with /utf-8.
+  target_compile_options(
+    fmt PUBLIC $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>)
+  target_compile_options(
+    fmt-header-only
+    INTERFACE $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>)
+else ()
+  target_compile_definitions(fmt PUBLIC FMT_UNICODE=0)
 endif ()
 
-add_library(fmt-header-only INTERFACE)
+if (FMT_MODULE)
+  target_sources(
+    fmt-header-only
+    PUBLIC FILE_SET
+           HEADERS
+           BASE_DIRS
+           include
+           FILES
+           include/fmt/ostream.h
+           include/fmt/format-inl.h
+           include/fmt/ranges.h
+           include/fmt/xchar.h
+           include/fmt/core.h
+           include/fmt/chrono.h
+           include/fmt/os.h
+           include/fmt/color.h
+           include/fmt/args.h
+           include/fmt/printf.h
+           include/fmt/compile.h
+           include/fmt/format.h
+           include/fmt/fmt-c.h
+           include/fmt/std.h
+           include/fmt/base.h)
+
+  message(STATUS "FMT_USE_MODULES=${FMT_USE_MODULES}")
+  add_library(fmt-module STATIC)
+  target_sources(
+    fmt-module
+    PUBLIC FILE_SET
+           fmt
+           TYPE
+           CXX_MODULES
+           BASE_DIRS
+           src
+           FILES
+           src/fmt.cc)
+  target_compile_features(fmt-module PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
+  if (FMT_IMPORT_STD)
+    message(STATUS "Set target property CXX_MODULE_STD=ON")
+    target_compile_definitions(fmt-module PUBLIC FMT_IMPORT_STD)
+    set_target_properties(fmt-module PROPERTIES CXX_MODULE_STD ON)
+  else ()
+    message(WARNING "CXX_MODULE_STD=OFF")
+  endif ()
+  target_sources(fmt-module PRIVATE src/os.cc src/format.cc)
+
+  target_link_libraries(fmt-module PUBLIC fmt-header-only)
+  setup_target(fmt-module PUBLIC)
+endif ()
 
 target_compile_definitions(fmt-header-only INTERFACE FMT_HEADER_ONLY=1)
 target_compile_features(fmt-header-only INTERFACE cxx_std_11)
 setup_target(fmt-header-only INTERFACE)
+set_target_properties(fmt-header-only PROPERTIES VERIFY_INTERFACE_HEADER_SETS
+                                                 ${PROJECT_IS_TOP_LEVEL})
 
 add_library(fmt-c src/fmt-c.cc)
 target_compile_features(fmt-c INTERFACE c_std_11)
@@ -435,7 +536,7 @@ set_target_properties(
 if (MSVC)
   target_compile_options(fmt-c PUBLIC /Zc:preprocessor)
 endif ()
-target_link_libraries(fmt-c PUBLIC fmt::fmt)
+target_link_libraries(fmt-c PUBLIC fmt::fmt-header-only)
 add_library(fmt::fmt-c ALIAS fmt-c)
 
 set_target_properties(fmt-c PROPERTIES PUBLIC_HEADER include/fmt/fmt-c.h)
@@ -488,10 +589,10 @@ if (FMT_INSTALL)
   set(INSTALL_TARGETS fmt fmt-header-only fmt-c)
 
   if (FMT_MODULE)
-    list(APPEND INSTALL_TARGETS fmt-module)
-    if (FMT_USE_CMAKE_MODULES)
-      set(INSTALL_FILE_SET FILE_SET fmt DESTINATION ${FMT_INC_DIR}/fmt)
-    endif ()
+    set(INSTALL_FILE_SET FILE_SET fmt DESTINATION "${FMT_INC_DIR}/fmt" FILE_SET
+                         HEADERS)
+  else ()
+    set(INSTALL_FILE_SET)
   endif ()
 
   # Install the library and headers.
@@ -520,7 +621,8 @@ if (FMT_INSTALL)
     EXPORT ${targets_export_name}
     DESTINATION ${FMT_CMAKE_DIR}
     NAMESPACE fmt::
-    COMPONENT fmt_core)
+    COMPONENT fmt_core
+    CXX_MODULES_DIRECTORY .)
 
   install(
     FILES "${pkgconfig}"
