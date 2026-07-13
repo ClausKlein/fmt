@@ -1,3 +1,13 @@
+enable_language(C)
+add_executable(c-test c-test.c)
+target_link_libraries(c-test PRIVATE fmt::fmt-c)
+add_test(NAME c-test COMMAND c-test)
+
+if (FMT_MODULE)
+  message(WARNING "Testing is incompatible with build mode 'module'.")
+  return ()
+endif ()
+
 add_subdirectory(gtest)
 
 set(TEST_MAIN_SRC test-main.cc gtest-extra.cc gtest-extra.h util.cc)
@@ -86,13 +96,13 @@ endif ()
 
 if (NOT DEFINED MSVC_STATIC_RUNTIME AND MSVC)
   foreach (flag_var
-           CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-           CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-    if (${flag_var} MATCHES "^(/|-)(MT|MTd)")
-      set(MSVC_STATIC_RUNTIME ON)
-      break()
-    endif ()
-  endforeach ()
+			 CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+			 CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+	if (${flag_var} MATCHES "^(/|-)(MT|MTd)")
+	  set(MSVC_STATIC_RUNTIME ON)
+	  break()
+	endif ()
+  endforeach()
 endif ()
 
 if (NOT MSVC_STATIC_RUNTIME)
@@ -240,8 +250,3 @@ if (FMT_CUDA_TEST)
     add_test(NAME cuda-test COMMAND fmt-in-cuda-test)
   endif ()
 endif ()
-
-enable_language(C)
-add_executable(c-test c-test.c)
-target_link_libraries(c-test PRIVATE fmt::fmt-c)
-add_test(NAME c-test COMMAND c-test)
