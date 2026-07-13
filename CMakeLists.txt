@@ -448,6 +448,8 @@ if (FMT_SAFE_DURATION_CAST)
   target_compile_definitions(fmt PUBLIC FMT_SAFE_DURATION_CAST)
 endif ()
 
+add_library(fmt-header-only INTERFACE)
+
 if (NOT MSVC)
   # Unicode is always supported on compilers other than MSVC.
 elseif (FMT_UNICODE)
@@ -457,8 +459,6 @@ elseif (FMT_UNICODE)
 else ()
   target_compile_definitions(fmt PUBLIC FMT_UNICODE=0)
 endif ()
-
-add_library(fmt-header-only INTERFACE)
 
 if (FMT_MODULE)
   target_sources(
