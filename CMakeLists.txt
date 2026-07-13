@@ -23,16 +23,19 @@ function (join result_var)
   foreach (arg ${ARGN})
     set(result "${result}${arg}")
   endforeach ()
-  set(${result_var} "${result}" PARENT_SCOPE)
+  set(${result_var}
+      "${result}"
+      PARENT_SCOPE)
 endfunction ()
 
 # DEPRECATED! Should be merged into add_module_library.
-function(enable_module target)
+function (enable_module target)
   if (MSVC)
     if (NOT CMAKE_GENERATOR STREQUAL "Ninja")
       set(BMI_DIR "${CMAKE_CURRENT_BINARY_DIR}")
       file(TO_NATIVE_PATH "${BMI_DIR}/${target}.ifc" BMI)
-      target_compile_options(${target}
+      target_compile_options(
+        ${target}
         PRIVATE /interface /ifcOutput ${BMI}
         INTERFACE /reference fmt=${BMI})
       set_target_properties(${target} PROPERTIES ADDITIONAL_CLEAN_FILES ${BMI})
@@ -42,8 +45,8 @@ function(enable_module target)
 endfunction ()
 
 set(FMT_USE_CMAKE_MODULES FALSE)
-if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.28 AND
-    CMAKE_GENERATOR STREQUAL "Ninja")
+if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.28 AND CMAKE_GENERATOR STREQUAL
+                                                 "Ninja")
   set(FMT_USE_CMAKE_MODULES TRUE)
 endif ()
 
@@ -54,7 +57,7 @@ endif ()
 #
 # Usage:
 #   add_module_library(<name> [sources...] FALLBACK [sources...] [IF enabled])
-function(add_module_library name)
+function (add_module_library name)
   cmake_parse_arguments(AML "" "IF" "FALLBACK" ${ARGN})
   set(sources ${AML_UNPARSED_ARGUMENTS})
 
@@ -80,16 +83,14 @@ function(add_module_library name)
 
   if (FMT_USE_CMAKE_MODULES AND FMT_IMPORT_STD)
     if (NOT DEFINED CMAKE_CXX_STANDARD)
-        set(CMAKE_CXX_STANDARD 23)
+      set(CMAKE_CXX_STANDARD 23)
     endif ()
     # -------------------------------------------------------------------------
     # Tell CMake that we explicitly want `import std`.
     # This will set the property CXX_MODULE_STD on target {fmt} to 1
     # -------------------------------------------------------------------------
     message(
-      STATUS
-      "CMAKE_CXX_COMPILER_IMPORT_STD=${CMAKE_CXX_COMPILER_IMPORT_STD}"
-    )
+      STATUS "CMAKE_CXX_COMPILER_IMPORT_STD=${CMAKE_CXX_COMPILER_IMPORT_STD}")
     if (${CMAKE_CXX_STANDARD} IN_LIST CMAKE_CXX_COMPILER_IMPORT_STD)
       message(STATUS "Use FMT_IMPORT_STD=${FMT_IMPORT_STD}")
       set_target_properties(${name} PROPERTIES CXX_MODULE_STD ON)
@@ -100,8 +101,8 @@ function(add_module_library name)
   endif ()
 
   if (FMT_USE_CMAKE_MODULES)
-    target_sources(${name} PUBLIC FILE_SET fmt TYPE CXX_MODULES
-                   FILES ${sources})
+    target_sources(${name} PUBLIC FILE_SET fmt TYPE CXX_MODULES FILES
+                                  ${sources})
   else ()
     # `std` is affected by CMake options and may be higher than C++20.
     get_target_property(std ${name} CXX_STANDARD)
@@ -121,10 +122,10 @@ function(add_module_library name)
         set(pcms ${pcms} ${CMAKE_CURRENT_BINARY_DIR}/${pcm})
         add_custom_command(
           OUTPUT ${pcm}
-          COMMAND ${CMAKE_CXX_COMPILER}
-                  -std=c++${std} -x c++-module --precompile -c
-                  -o ${pcm} ${CMAKE_CURRENT_SOURCE_DIR}/${src}
-                  "-I$<JOIN:$<TARGET_PROPERTY:${name},INCLUDE_DIRECTORIES>,;-I>"
+          COMMAND
+            ${CMAKE_CXX_COMPILER} -std=c++${std} -x c++-module --precompile -c
+            -o ${pcm} ${CMAKE_CURRENT_SOURCE_DIR}/${src}
+            "-I$<JOIN:$<TARGET_PROPERTY:${name},INCLUDE_DIRECTORIES>,;-I>"
           # Required by the -I generator expression above.
           COMMAND_EXPAND_LISTS
           DEPENDS ${src})
@@ -139,14 +140,14 @@ function(add_module_library name)
         set(sources ${sources} ${pcm} ${CMAKE_CURRENT_BINARY_DIR}/${obj})
         add_custom_command(
           OUTPUT ${obj}
-          COMMAND ${CMAKE_CXX_COMPILER} $<TARGET_PROPERTY:${name},COMPILE_OPTIONS>
-                  -c -o ${obj} ${pcm}
+          COMMAND ${CMAKE_CXX_COMPILER}
+                  $<TARGET_PROPERTY:${name},COMPILE_OPTIONS> -c -o ${obj} ${pcm}
           DEPENDS ${pcm})
       endforeach ()
     endif ()
     target_sources(${name} PRIVATE ${sources})
   endif ()
-endfunction()
+endfunction ()
 
 include(CMakeParseArguments)
 
@@ -454,8 +455,11 @@ if (NOT MSVC)
   # Unicode is always supported on compilers other than MSVC.
 elseif (FMT_UNICODE)
   # Unicode support requires compiling with /utf-8.
-  target_compile_options(fmt PUBLIC $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>)
-  target_compile_options(fmt-header-only INTERFACE $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>)
+  target_compile_options(
+    fmt PUBLIC $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>)
+  target_compile_options(
+    fmt-header-only
+    INTERFACE $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>)
 else ()
   target_compile_definitions(fmt PUBLIC FMT_UNICODE=0)
 endif ()
@@ -463,54 +467,58 @@ endif ()
 if (FMT_MODULE)
   target_sources(
     fmt-header-only
-    PUBLIC
-    FILE_SET HEADERS
-      BASE_DIRS include
-      FILES
-        include/fmt/ostream.h
-        include/fmt/format-inl.h
-        include/fmt/ranges.h
-        include/fmt/xchar.h
-        include/fmt/core.h
-        include/fmt/chrono.h
-        include/fmt/os.h
-        include/fmt/color.h
-        include/fmt/args.h
-        include/fmt/printf.h
-        include/fmt/compile.h
-        include/fmt/format.h
-        include/fmt/fmt-c.h
-        include/fmt/std.h
-        include/fmt/base.h)
+    PUBLIC FILE_SET
+           HEADERS
+           BASE_DIRS
+           include
+           FILES
+           include/fmt/ostream.h
+           include/fmt/format-inl.h
+           include/fmt/ranges.h
+           include/fmt/xchar.h
+           include/fmt/core.h
+           include/fmt/chrono.h
+           include/fmt/os.h
+           include/fmt/color.h
+           include/fmt/args.h
+           include/fmt/printf.h
+           include/fmt/compile.h
+           include/fmt/format.h
+           include/fmt/fmt-c.h
+           include/fmt/std.h
+           include/fmt/base.h)
 
-    message(STATUS "FMT_USE_MODULES=${FMT_USE_MODULES}")
-    add_library(fmt-module STATIC)
-    target_sources(
-        fmt-module
-        PUBLIC
-            FILE_SET fmt
-                TYPE CXX_MODULES
-                BASE_DIRS src
-                FILES src/fmt.cc
-    )
-    target_compile_features(fmt-module PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
-    if(FMT_IMPORT_STD)
-      message(STATUS "Set target property CXX_MODULE_STD=ON")
-      target_compile_definitions(fmt-module PUBLIC FMT_IMPORT_STD)
-      set_target_properties(fmt-module PROPERTIES CXX_MODULE_STD ON)
-    else ()
-      message(WARNING "CXX_MODULE_STD=OFF")
-    endif()
-    target_sources(fmt-module PRIVATE src/os.cc src/format.cc)
+  message(STATUS "FMT_USE_MODULES=${FMT_USE_MODULES}")
+  add_library(fmt-module STATIC)
+  target_sources(
+    fmt-module
+    PUBLIC FILE_SET
+           fmt
+           TYPE
+           CXX_MODULES
+           BASE_DIRS
+           src
+           FILES
+           src/fmt.cc)
+  target_compile_features(fmt-module PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
+  if (FMT_IMPORT_STD)
+    message(STATUS "Set target property CXX_MODULE_STD=ON")
+    target_compile_definitions(fmt-module PUBLIC FMT_IMPORT_STD)
+    set_target_properties(fmt-module PROPERTIES CXX_MODULE_STD ON)
+  else ()
+    message(WARNING "CXX_MODULE_STD=OFF")
+  endif ()
+  target_sources(fmt-module PRIVATE src/os.cc src/format.cc)
 
-    target_link_libraries(fmt-module PUBLIC fmt-header-only)
-    setup_target(fmt-module PUBLIC)
+  target_link_libraries(fmt-module PUBLIC fmt-header-only)
+  setup_target(fmt-module PUBLIC)
 endif ()
 
 target_compile_definitions(fmt-header-only INTERFACE FMT_HEADER_ONLY=1)
 target_compile_features(fmt-header-only INTERFACE cxx_std_11)
 setup_target(fmt-header-only INTERFACE)
-set_target_properties(fmt-header-only PROPERTIES VERIFY_INTERFACE_HEADER_SETS ${PROJECT_IS_TOP_LEVEL})
+set_target_properties(fmt-header-only PROPERTIES VERIFY_INTERFACE_HEADER_SETS
+                                                 ${PROJECT_IS_TOP_LEVEL})
 
 add_library(fmt-c src/fmt-c.cc)
 target_compile_features(fmt-c INTERFACE c_std_11)
@@ -581,7 +589,8 @@ if (FMT_INSTALL)
   set(INSTALL_TARGETS fmt fmt-header-only fmt-c)
 
   if (FMT_MODULE)
-    set(INSTALL_FILE_SET FILE_SET fmt DESTINATION "${FMT_INC_DIR}/fmt" FILE_SET HEADERS)
+    set(INSTALL_FILE_SET FILE_SET fmt DESTINATION "${FMT_INC_DIR}/fmt" FILE_SET
+                         HEADERS)
   else ()
     set(INSTALL_FILE_SET)
   endif ()

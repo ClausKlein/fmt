@@ -91,13 +91,13 @@ endif ()
 
 if (NOT DEFINED MSVC_STATIC_RUNTIME AND MSVC)
   foreach (flag_var
-			 CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-			 CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-	if (${flag_var} MATCHES "^(/|-)(MT|MTd)")
-	  set(MSVC_STATIC_RUNTIME ON)
-	  break()
-	endif ()
-  endforeach()
+           CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+           CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+    if (${flag_var} MATCHES "^(/|-)(MT|MTd)")
+      set(MSVC_STATIC_RUNTIME ON)
+      break()
+    endif ()
+  endforeach ()
 endif ()
 
 if (NOT MSVC_STATIC_RUNTIME)

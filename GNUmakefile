@@ -9,7 +9,7 @@ export CC:=gcc-16
 export CXX:=g++-16
 export CXXFLAGS:=-stdlib=libstdc++
 
-.PHONY: all test check clean
+.PHONY: all test check clean format
 
 all: build
 	ninja -C build all # TODO: all_verify_interface_header_sets
@@ -25,6 +25,9 @@ clean:
 	rm -rf build .cache compile_commands.json
 	find . -name .DS_Store -delete
 	find . -name '*~' -delete
+
+format:
+	git ls-files ::*CMakeLists.txt ::*.cmake | xargs cmake-format -i
 
 check: build
 	run-clang-tidy src
