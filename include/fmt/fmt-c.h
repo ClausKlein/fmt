@@ -1,6 +1,6 @@
 // Formatting library for C++ - the C API
 //
-// Copyright (c) 2012 - present, Victor Zverovich
+// Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors
 // All rights reserved.
 //
 // For the license information refer to format.h.
@@ -10,6 +10,24 @@
 
 #include <stdbool.h>  // bool
 #include <stddef.h>   // size_t
+#include <stdio.h>    // FILE
+
+#if !defined(FMT_HEADER_ONLY) && defined(_WIN32)
+#  if defined(FMT_LIB_EXPORT)
+#    define FMT_CAPI __declspec(dllexport)
+#  elif defined(FMT_SHARED)
+#    define FMT_CAPI __declspec(dllimport)
+#  endif
+#elif defined(FMT_LIB_EXPORT) || defined(FMT_SHARED)
+#  ifdef __GNUC__
+#    define FMT_CAPI __attribute__((visibility("default")))
+#  else
+#    define FMT_CAPI
+#  endif
+#endif
+#ifndef FMT_CAPI
+#  define FMT_CAPI
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,8 +62,10 @@ typedef struct {
 
 enum { fmt_error = -1, fmt_error_invalid_arg = -2 };
 
-int fmt_vformat(char* buffer, size_t size, const char* fmt, const fmt_arg* args,
-                size_t num_args);
+int FMT_CAPI fmt_vformat(char* buffer, size_t size, const char* fmt,
+                         const fmt_arg* args, size_t num_args);
+int FMT_CAPI fmt_vprint(FILE* stream, const char* fmt, const fmt_arg* args,
+                        size_t num_args);
 
 #ifdef __cplusplus
 }
@@ -89,15 +109,17 @@ static inline fmt_arg fmt_from_ptr(const void* x) {
   return (fmt_arg){.type = fmt_pointer, .value.pointer = x};
 }
 
-void fmt_unsupported_type(void);
+void FMT_CAPI fmt_unsupported_type(void);
 
-#  ifndef _MSC_VER
+#  if !defined(_MSC_VER) || defined(__clang__)
 typedef signed char fmt_signed_char;
 #  else
 typedef enum {} fmt_signed_char;
 #  endif
-// Require modern MSVC with conformant preprocessor
-#  if defined(_MSC_VER) && (!defined(_MSVC_TRADITIONAL) || _MSVC_TRADITIONAL)
+
+// Require modern MSVC with conformant preprocessor.
+#  if defined(_MSC_VER) && !defined(__clang__) && \
+      (!defined(_MSVC_TRADITIONAL) || _MSVC_TRADITIONAL)
 #    error "C API requires MSVC 2019+ with /Zc:preprocessor flag."
 #  endif
 
@@ -127,12 +149,12 @@ typedef enum {} fmt_signed_char;
 #  define FMT_CAT(a, b) FMT_CAT_(a, b)
 #  define FMT_CAT_(a, b) a##b
 
-#  define FMT_NARG_(_id, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, \
-                    _13, _14, _15, _16, N, ...)                             \
+#  define FMT_NARG_(_unused, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, \
+                    _12, _13, _14, _15, _16, N, ...)                       \
     N
-#  define FMT_NARG(...)                                                        \
-    FMT_NARG_(dummy, ##__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, \
-              4, 3, 2, 1, 0)
+#  define FMT_NARG(_unused, ...)                                             \
+    FMT_NARG_(, ##__VA_ARGS__, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, \
+              3, 2, 1, 0)
 
 #  define FMT_MAP_0(...)
 #  define FMT_MAP_1(f, a) f(a)
@@ -166,13 +188,30 @@ typedef enum {} fmt_signed_char;
         f(n), f(o), f(p), f(q)
 
 #  define FMT_MAP(f, ...) \
-    FMT_CAT(FMT_MAP_, FMT_NARG(__VA_ARGS__))(f, ##__VA_ARGS__)
+    FMT_CAT(FMT_MAP_, FMT_NARG(, ##__VA_ARGS__))(f, ##__VA_ARGS__)
 
-#  define fmt_format(buffer, size, fmt, ...)                              \
-    fmt_vformat(                                                          \
-        (buffer), (size), (fmt),                                          \
-        (fmt_arg[]){{fmt_int}, FMT_MAP(FMT_MAKE_ARG, ##__VA_ARGS__)} + 1, \
-        FMT_NARG(__VA_ARGS__))
+// select between two expressions depending on whether __VA_ARGS__ is empty
+// expands to e if __VA_ARGS__ is empty and n otherwise
+#  define FMT_VA_SELECT(e, n, ...)                                             \
+    FMT_NARG_(, ##__VA_ARGS__, n, n, n, n, n, n, n, n, n, n, n, n, n, n, n, n, \
+              e)
+
+#  define FMT_MAKE_NULL(...) NULL
+#  define FMT_MAKE_ARGLIST(...) \
+    (fmt_arg[]) { FMT_MAP(FMT_MAKE_ARG, ##__VA_ARGS__) }
+#  define FMT_EXPAND(v) v
+
+#  define FMT_FORMAT_ARGS(fmt, ...)                               \
+    (fmt),                                                        \
+        FMT_EXPAND(FMT_VA_SELECT(FMT_MAKE_NULL, FMT_MAKE_ARGLIST, \
+                                 ##__VA_ARGS__)(__VA_ARGS__)),    \
+        FMT_NARG(, ##__VA_ARGS__)
+
+#  define fmt_format(buffer, size, fmt, ...) \
+    fmt_vformat((buffer), (size), FMT_FORMAT_ARGS((fmt), ##__VA_ARGS__))
+
+#  define fmt_print(stream, fmt, ...) \
+    fmt_vprint((stream), FMT_FORMAT_ARGS((fmt), ##__VA_ARGS__))
 
 #endif  // __cplusplus
 

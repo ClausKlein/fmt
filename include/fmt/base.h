@@ -1,6 +1,6 @@
 // Formatting library for C++ - the base API for char/UTF-8
 //
-// Copyright (c) 2012 - present, Victor Zverovich
+// Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors
 // All rights reserved.
 //
 // For the license information refer to format.h.
@@ -21,7 +21,7 @@
 #endif
 
 // The fmt library version in the form major * 10000 + minor * 100 + patch.
-#define FMT_VERSION 120101
+#define FMT_VERSION 120200
 
 // Detect compiler versions.
 #if defined(__clang__) && !defined(__ibmxl__)
@@ -223,12 +223,25 @@
 #else
 #  define FMT_PRAGMA_CLANG(x)
 #endif
+#if FMT_MSC_VERSION
+#  define FMT_PRAGMA_MSVC(x) __pragma(x)
+#else
+#  define FMT_PRAGMA_MSVC(x)
+#endif
+
+#ifndef FMT_USE_OPTIMIZE_PRAGMA
+#  define FMT_USE_OPTIMIZE_PRAGMA 1
+#endif
 
 // Enable minimal optimizations for more compact code in debug mode.
 FMT_PRAGMA_GCC(push_options)
-#if !defined(__OPTIMIZE__) && !defined(__CUDACC__) && !defined(FMT_MODULE)
+#if FMT_USE_OPTIMIZE_PRAGMA && !defined(__OPTIMIZE__) && \
+    !defined(__CUDACC__) && !defined(FMT_MODULE)
 FMT_PRAGMA_GCC(optimize("Og"))
 #endif
+
+FMT_PRAGMA_MSVC(warning(push))
+FMT_PRAGMA_MSVC(warning(disable : 4702))
 
 #ifdef FMT_DEPRECATED
 // Use the provided definition.
@@ -484,6 +497,15 @@ inline FMT_CONSTEXPR auto get_container(OutputIt it) ->
   };
   return *accessor(it).container;
 }
+
+template <typename T, typename Enable = void>
+struct is_contiguous : std::false_type {};
+template <typename T>
+struct is_contiguous<T,
+                     void_t<decltype(std::declval<T&>().data()),
+                            decltype(std::declval<T&>().size()),
+                            decltype(std::declval<T&>().operator[](size_t()))>>
+    : std::true_type {};
 }  // namespace detail
 
 // Parsing-related public API and forward declarations.
@@ -587,9 +609,6 @@ using string_view = basic_string_view<char>;
 template <typename T> class basic_appender;
 using appender = basic_appender<char>;
 
-// Checks whether T is a container with contiguous storage.
-template <typename T> struct is_contiguous : std::false_type {};
-
 class context;
 template <typename OutputIt, typename Char> class generic_context;
 template <typename Char> class parse_context;
@@ -607,6 +626,8 @@ template <typename Char>
 using buffered_context =
     conditional_t<std::is_same<Char, char>::value, context,
                   generic_context<basic_appender<Char>, Char>>;
+
+template <typename T> struct is_contiguous : detail::is_contiguous<T> {};
 
 template <typename Context> class basic_format_arg;
 template <typename Context> class basic_format_args;
@@ -1030,6 +1051,7 @@ struct is_view : std::false_type {};
 template <typename T>
 struct is_view<T, bool_constant<sizeof(T) != 0>> : std::is_base_of<view, T> {};
 
+// DEPRECATED! named_arg will be moved to the fmt namespace.
 template <typename T, typename Char> struct named_arg;
 template <typename T> struct is_named_arg : std::false_type {};
 template <typename T> struct is_static_named_arg : std::false_type {};
@@ -1808,6 +1830,7 @@ template <typename T> class buffer {
   /// Appends data to the end of the buffer.
   template <typename U>
   FMT_CONSTEXPR20 void append(const U* begin, const U* end) {
+    static_assert(std::is_same<T, U>() || std::is_same<U, char>(), "");
     while (begin != end) {
       auto size = size_;
       auto free_cap = capacity_ - size;
@@ -1820,7 +1843,7 @@ template <typename T> class buffer {
       }
       // A loop is faster than memcpy on small sizes.
       T* out = ptr_ + size;
-      for (size_t i = 0; i < count; ++i) out[i] = begin[i];
+      for (size_t i = 0; i < count; ++i) out[i] = static_cast<T>(begin[i]);
       size_ += count;
       begin += count;
     }
@@ -1856,6 +1879,54 @@ class fixed_buffer_traits {
   }
 };
 
+template <typename OutputIt, typename InputIt, typename = void>
+struct has_append : std::false_type {};
+
+template <typename OutputIt, typename InputIt>
+struct has_append<OutputIt, InputIt,
+                  void_t<decltype(get_container(std::declval<OutputIt>())
+                                      .append(std::declval<InputIt>(),
+                                              std::declval<InputIt>()))>>
+    : std::true_type {};
+
+template <typename OutputIt, typename T, typename = void>
+struct has_insert : std::false_type {};
+
+template <typename OutputIt, typename T>
+struct has_insert<
+    OutputIt, T,
+    void_t<decltype(get_container(std::declval<OutputIt>())
+                        .insert({}, std::declval<T>(), std::declval<T>()))>>
+    : std::true_type {};
+
+// An optimized version of std::copy with the output value type (T).
+template <typename T, typename InputIt, typename OutputIt,
+          FMT_ENABLE_IF(is_back_insert_iterator<OutputIt>() &&
+                        has_append<OutputIt, InputIt>())>
+FMT_CONSTEXPR auto copy(InputIt begin, InputIt end, OutputIt out) -> OutputIt {
+  get_container(out).append(begin, end);
+  return out;
+}
+
+template <typename T, typename InputIt, typename OutputIt,
+          FMT_ENABLE_IF(is_back_insert_iterator<OutputIt>() &&
+                        !has_append<OutputIt, InputIt>() &&
+                        has_insert<OutputIt, InputIt>())>
+FMT_CONSTEXPR auto copy(InputIt begin, InputIt end, OutputIt out) -> OutputIt {
+  auto& c = get_container(out);
+  c.insert(c.end(), begin, end);
+  return out;
+}
+
+template <typename T, typename InputIt, typename OutputIt,
+          FMT_ENABLE_IF(!is_back_insert_iterator<OutputIt>() ||
+                        !(has_append<OutputIt, InputIt>() ||
+                          has_insert<OutputIt, InputIt>()))>
+FMT_CONSTEXPR auto copy(InputIt begin, InputIt end, OutputIt out) -> OutputIt {
+  while (begin != end) *out++ = static_cast<T>(*begin++);
+  return out;
+}
+
 // A buffer that writes to an output iterator when flushed.
 template <typename OutputIt, typename T, typename Traits = buffer_traits>
 class iterator_buffer : public Traits, public buffer<T> {
@@ -1873,7 +1944,7 @@ class iterator_buffer : public Traits, public buffer<T> {
     this->clear();
     const T* begin = data_;
     const T* end = begin + this->limit(size);
-    while (begin != end) *out_++ = *begin++;
+    out_ = copy<T>(begin, end, out_);
   }
 
  public:
@@ -2531,7 +2602,7 @@ template <typename Context> class basic_format_args {
   FMT_CONSTEXPR auto get(int id) const -> format_arg {
     auto arg = format_arg();
     if (!is_packed()) {
-      if (id < max_size()) arg = args_[id];
+      if (unsigned(id) < unsigned(max_size())) arg = args_[id];
       return arg;
     }
     if (unsigned(id) >= detail::max_packed_args) return arg;
@@ -2640,16 +2711,16 @@ template <typename... T> struct fstring {
     static_assert(count<(is_view<remove_cvref_t<T>>::value &&
                          std::is_reference<T>::value)...>() == 0,
                   "passing views as lvalues is disallowed");
-    if (FMT_USE_CONSTEVAL) parse_format_string<char>(s, checker(s, arg_pack()));
+    if (FMT_USE_CONSTEVAL)
+      parse_format_string<char>(str, checker(str, arg_pack()));
     constexpr bool unused = detail::enforce_compile_checks<sizeof(s) != 0>();
     (void)unused;
   }
   template <typename S,
             FMT_ENABLE_IF(std::is_convertible<const S&, string_view>::value)>
   FMT_CONSTEVAL FMT_ALWAYS_INLINE fstring(const S& s) : str(s) {
-    auto sv = string_view(str);
     if (FMT_USE_CONSTEVAL)
-      detail::parse_format_string<char>(sv, checker(sv, arg_pack()));
+      detail::parse_format_string<char>(str, checker(str, arg_pack()));
     constexpr bool unused = detail::enforce_compile_checks<sizeof(s) != 0>();
     (void)unused;
   }
@@ -2873,6 +2944,7 @@ FMT_INLINE void println(format_string<T...> fmt, T&&... args) {
 }
 
 FMT_PRAGMA_GCC(pop_options)
+FMT_PRAGMA_MSVC(warning(pop))
 FMT_END_EXPORT
 FMT_END_NAMESPACE
 

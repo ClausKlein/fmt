@@ -1,7 +1,7 @@
 /*
   Formatting library for C++
 
-  Copyright (c) 2012 - present, Victor Zverovich
+  Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors
 
   Permission is hereby granted, free of charge, to any person obtaining
   a copy of this software and associated documentation files (the
@@ -326,6 +326,9 @@ class uint128 {
       -> uint128 {
     return {lhs.hi_ & rhs.hi_, lhs.lo_ & rhs.lo_};
   }
+  friend constexpr auto operator~(const uint128& n) -> uint128 {
+    return {~n.hi_, ~n.lo_};
+  }
   friend FMT_CONSTEXPR auto operator+(const uint128& lhs, const uint128& rhs)
       -> uint128 {
     auto result = uint128(lhs);
@@ -546,60 +549,6 @@ FMT_CONSTEXPR20 auto fill_n(T* out, Size count, char value) -> T* {
                 "sizeof(T) must be 1 to use char for initialization");
   memset(out, value, to_unsigned(count));
   return out + count;
-}
-
-template <typename OutputIt, typename InputIt, typename = void>
-struct has_back_insert_iterator_container_append : std::false_type {};
-
-template <typename OutputIt, typename InputIt>
-struct has_back_insert_iterator_container_append<
-    OutputIt, InputIt,
-    void_t<decltype(get_container(std::declval<OutputIt>())
-                        .append(std::declval<InputIt>(),
-                                std::declval<InputIt>()))>> : std::true_type {};
-
-template <typename OutputIt, typename InputIt, typename = void>
-struct has_back_insert_iterator_container_insert_at_end : std::false_type {};
-
-template <typename OutputIt, typename InputIt>
-struct has_back_insert_iterator_container_insert_at_end<
-    OutputIt, InputIt,
-    void_t<decltype(get_container(std::declval<OutputIt>())
-                        .insert(get_container(std::declval<OutputIt>()).end(),
-                                std::declval<InputIt>(),
-                                std::declval<InputIt>()))>> : std::true_type {};
-
-// An optimized version of std::copy with the output value type (T).
-template <typename T, typename InputIt, typename OutputIt,
-          FMT_ENABLE_IF(is_back_insert_iterator<OutputIt>::value&&
-                            has_back_insert_iterator_container_append<
-                                OutputIt, InputIt>::value)>
-FMT_CONSTEXPR auto copy(InputIt begin, InputIt end, OutputIt out) -> OutputIt {
-  get_container(out).append(begin, end);
-  return out;
-}
-
-template <typename T, typename InputIt, typename OutputIt,
-          FMT_ENABLE_IF(is_back_insert_iterator<OutputIt>::value &&
-                        !has_back_insert_iterator_container_append<
-                            OutputIt, InputIt>::value &&
-                        has_back_insert_iterator_container_insert_at_end<
-                            OutputIt, InputIt>::value)>
-FMT_CONSTEXPR auto copy(InputIt begin, InputIt end, OutputIt out) -> OutputIt {
-  auto& c = get_container(out);
-  c.insert(c.end(), begin, end);
-  return out;
-}
-
-template <typename T, typename InputIt, typename OutputIt,
-          FMT_ENABLE_IF(!(is_back_insert_iterator<OutputIt>::value &&
-                          (has_back_insert_iterator_container_append<
-                               OutputIt, InputIt>::value ||
-                           has_back_insert_iterator_container_insert_at_end<
-                               OutputIt, InputIt>::value)))>
-FMT_CONSTEXPR auto copy(InputIt begin, InputIt end, OutputIt out) -> OutputIt {
-  while (begin != end) *out++ = static_cast<T>(*begin++);
-  return out;
 }
 
 template <typename T, typename V, typename OutputIt>
@@ -1097,8 +1046,8 @@ inline auto digits2_i(size_t value) noexcept -> const char* {
 }
 
 template <typename Char> constexpr auto getsign(sign s) -> Char {
-  return static_cast<char>(((' ' << 24) | ('+' << 16) | ('-' << 8)) >>
-                           (static_cast<int>(s) * 8));
+  return static_cast<Char>(static_cast<char>(
+      ((' ' << 24) | ('+' << 16) | ('-' << 8)) >> (static_cast<int>(s) * 8)));
 }
 
 template <typename T> FMT_CONSTEXPR auto count_digits_fallback(T n) -> int {
@@ -1219,7 +1168,7 @@ FMT_API auto thousands_sep_impl(locale_ref loc) -> thousands_sep_result<Char>;
 template <typename Char>
 inline auto thousands_sep(locale_ref loc) -> thousands_sep_result<Char> {
   auto result = thousands_sep_impl<char>(loc);
-  return {result.grouping, Char(result.thousands_sep)};
+  return {std::move(result.grouping), Char(result.thousands_sep)};
 }
 template <>
 inline auto thousands_sep(locale_ref loc) -> thousands_sep_result<wchar_t> {
@@ -1285,7 +1234,7 @@ FMT_CONSTEXPR20 auto do_format_decimal(Char* out, UInt value, int size)
   unsigned n = to_unsigned(size);
   while (value >= 100) {
     n -= 2;
-    if (!is_constant_evaluated() && sizeof(UInt) == 4) {
+    if (!is_constant_evaluated() && num_bits<UInt>() == 32) {
       auto p = value * static_cast<uint64_t>((1ull << 39) / 100 + 1);
       write2digits_i(out + n, p >> (39 - 7) & ((1 << 7) - 1));
       value = static_cast<UInt>(p >> 39) +
@@ -1968,7 +1917,7 @@ template <typename Char> class digit_grouping {
   explicit digit_grouping(locale_ref loc, bool localized = true) {
     if (!localized) return;
     auto sep = thousands_sep<Char>(loc);
-    grouping_ = sep.grouping;
+    grouping_ = std::move(sep.grouping);
     if (sep.thousands_sep) thousands_sep_.assign(1, sep.thousands_sep);
   }
   digit_grouping(std::string grouping, std::basic_string<Char> sep)
@@ -3215,8 +3164,9 @@ constexpr auto fractional_part_rounding_thresholds(int index) -> uint32_t {
   // It is equal to ceil(2^31 + 2^32/10^(k + 1)).
   // These are stored in a string literal because we cannot have static arrays
   // in constexpr functions and non-static ones are poorly optimized.
-  return U"\x9999999a\x828f5c29\x80418938\x80068db9\x8000a7c6\x800010c7"
-         U"\x800001ae\x8000002b"[index];
+  return uint32_t(u"\x9999\x828f\x8041\x8006\x8000\x8000\x8000\x8000"[index])
+             << 16u |
+         uint32_t(u"\x999a\x5c29\x8938\x8db9\xa7c6\x10c7\x01ae\x002b"[index]);
 }
 
 template <typename Float>
@@ -3621,8 +3571,8 @@ FMT_CONSTEXPR20 auto write(OutputIt out, T value) -> OutputIt {
       memcpy(ptr, prefix, 2);
       ptr += 2;
     } else {
-      *ptr++ = prefix[0];
-      *ptr++ = prefix[1];
+      *ptr++ = static_cast<Char>(prefix[0]);
+      *ptr++ = static_cast<Char>(prefix[1]);
     }
     if (abs_exponent >= 100) {
       *ptr++ = static_cast<Char>('0' + abs_exponent / 100);
@@ -3941,7 +3891,7 @@ template <typename OutputIt, typename Char> class generic_context {
 
   constexpr auto out() const -> iterator { return out_; }
 
-  void advance_to(iterator it) {
+  FMT_CONSTEXPR void advance_to(iterator it) {
     if (!detail::is_back_insert_iterator<iterator>()) out_ = it;
   }
 
