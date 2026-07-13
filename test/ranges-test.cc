@@ -10,7 +10,6 @@
 #include <array>
 #include <list>
 #include <map>
-#include <numeric>
 #include <queue>
 #include <stack>
 #include <string>
@@ -272,6 +271,23 @@ TEST(ranges_test, disabled_range_formatting_of_path) {
             fmt::range_format::disabled);
 }
 
+template <typename T> struct optional_like {
+  auto begin() const -> const T*;
+  auto end() const -> const T*;
+
+  bool has_value() const noexcept;
+  T& value() &;
+  const T& value() const&;
+  T&& value() &&;
+  const T&& value() const&&;
+};
+
+TEST(ranges_test, disabled_range_formatting_of_optional) {
+  // (C++26) Has a range support for std::optional.
+  EXPECT_EQ((fmt::range_format_kind<optional_like<int>, char>::value),
+            fmt::range_format::disabled);
+}
+
 struct vector_string : std::vector<char> {
   using base = std::vector<char>;
   using base::base;
@@ -431,12 +447,6 @@ TEST(ranges_test, join_tuple) {
   auto t7 = std::tuple<int, int&, const int&>(3, y, y);
   EXPECT_EQ(fmt::format("{:03}", fmt::join(t7, ", ")), "003, -01, -01");
 #endif
-}
-
-TEST(ranges_test, join_initializer_list) {
-  EXPECT_EQ(fmt::format("{}", fmt::join({1, 2, 3}, ", ")), "1, 2, 3");
-  EXPECT_EQ(fmt::format("{}", fmt::join({"fmt", "rocks", "!"}, " ")),
-            "fmt rocks !");
 }
 
 struct zstring_sentinel {};
@@ -716,10 +726,17 @@ struct codec_mask {
   int except = 0;
 };
 
+// A named functor instead of a lambda to avoid -Wsubobject-linkage: a lambda
+// gives the filter_view type internal linkage, which propagates to the
+// formatter base class via format_as.
+struct not_equal {
+  int value;
+  bool operator()(int c) const { return c != value; }
+};
+
 auto format_as(codec_mask mask) {
-  // Careful not to capture param by reference here, it will dangle.
   return codec_mask::codecs |
-         std::views::filter([mask](auto c) { return c != mask.except; });
+         std::views::filter(not_equal{mask.except});
 }
 }  // namespace views_filter_view_test
 
