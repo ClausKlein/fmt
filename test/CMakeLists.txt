@@ -26,6 +26,13 @@ function (add_fmt_test name)
   add_executable(${name} ${sources})
   target_link_libraries(${name} ${libs})
 
+  if (ADD_FMT_TEST_MODULE)
+    if (FMT_IMPORT_STD)
+      target_compile_features(${name} PRIVATE cxx_std_23)
+      set_target_properties(${name} PROPERTIES CXX_MODULE_STD 1)
+    endif ()
+  endif ()
+
   if (ADD_FMT_TEST_HEADER_ONLY AND NOT FMT_UNICODE)
     target_compile_definitions(${name} PUBLIC FMT_UNICODE=0)
   endif ()
@@ -158,7 +165,7 @@ if (FMT_PEDANTIC
     "-DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}"
     "-DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}"
     "-DCXX_STANDARD_FLAG=${CXX_STANDARD_FLAG}"
-    "-DFMT_DIR=${CMAKE_SOURCE_DIR}")
+    "-Dfmt_DIR=${CMAKE_SOURCE_DIR}")
 
   # Test if the targets are found from the build directory.
   add_test(
@@ -177,7 +184,9 @@ if (FMT_PEDANTIC
     "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
     "-DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}"
     "-DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}"
-    "-DFMT_DIR=${PROJECT_BINARY_DIR}"
+    "-DFMT_IMPORT_STD=${FMT_IMPORT_STD}"
+    "-DCMAKE_EXPERIMENTAL_CXX_IMPORT_STD=${CMAKE_EXPERIMENTAL_CXX_IMPORT_STD}"
+    "-Dfmt_DIR=${PROJECT_BINARY_DIR}"
     "-DPEDANTIC_COMPILE_FLAGS=${PEDANTIC_COMPILE_FLAGS}"
     "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
